@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simulador de Créditos Académicos - UNSa</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f8f9fa;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      border-bottom: 2px solid #ccc;
+      margin-bottom: 1rem;
+    }
+    img {
+      height: 80px;
+    }
+    h1 {
+      margin: 0;
+    }
+    form {
+      background: #fff;
+      padding: 1rem;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 600px;
+      margin-bottom: 2rem;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.75rem 1.5rem;
+    }
+    #tablaActividades {
+      margin-top: 2rem;
+      background: #e9ecef;
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    .btn-eliminar {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .btn-borrar-todo {
+      margin-top: 1rem;
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://economicas.unsa.edu.ar/web/archivos/otros/escudoUNSa.jpg" alt="Logo UNSa" />
+    <div>
+      <h1>Universidad Nacional de Salta</h1>
+      <h2>Secretaría Académica</h2>
+      <h2>Simulador de CRE</h2>
+    </div>
+  </header>
+
+  <form id="formulario" autocomplete="off">
+    <label>Nombre de la actividad o asignatura
+      <input type="text" id="nombre" required />
+    </label>
+    <label>Carga horaria presencial (HP)
+      <input type="number" id="hp" required />
+    </label>
+    <label>Carga horaria no presencial asistida (HN)
+      <input type="number" id="hn" required />
+    </label>
+    <label>Horas de trabajo autónomo estimadas (HA)
+      <input type="number" id="ha" required />
+    </label>
+    <label>Régimen
+      <select id="regimen" required>
+        <option value="" disabled selected>Seleccione una opción</option>
+        <option value="1° cuatrimestre">1° cuatrimestre</option>
+        <option value="2° cuatrimestre">2° cuatrimestre</option>
+        <option value="Anual">Anual</option>
+      </select>
+    </label>
+    <label>Año del plan de estudio
+      <select id="anioPlan" required>
+        <option value="" disabled selected>Seleccione un año</option>
+        <option value="Primer año">Primer año</option>
+        <option value="Segundo año">Segundo año</option>
+        <option value="Tercer año">Tercer año</option>
+        <option value="Cuarto año">Cuarto año</option>
+        <option value="Quinto año">Quinto año</option>
+      </select>
+    </label>
+    <label>Valor del crédito (25 o 30 horas)
+      <select id="valorCre">
+        <option value="" disabled selected>Seleccione un valor</option>
+        <option value="25">25</option>
+        <option value="30">30</option>
+      </select>
+    </label>
+    <button type="button" onclick="calcularCreditos()">Calcular CRE</button>
+    <button type="submit">Agregar Actividad</button>
+  </form>
+
+<div id="resultados"> 
+  <p><strong>Total de horas:</strong> <span id="total-horas">0</span> horas</p>
+  <p><strong>Total de Créditos estimados:</strong> <span id="total-creditos-estimados">0</span> créditos</p> 
+</div>
+
+  <div id="tablaActividades">
+    <h3>Actividades Cargadas</h3>
+    <table id="actividades">
+      <thead>
+        <tr>
+          <th>Asignatura</th>
+          <th>HP</th>
+          <th>HN</th>
+          <th>HA</th>
+          <th>Total Horas</th>
+          <th>Créditos</th>
+          <th>Régimen</th>
+          <th>Año</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="resumenTotal">
+      <strong>Total general de créditos:</strong> <span id="totalCreditos">0</span><br>
+      <strong>Total general de horas:</strong> <span id="totalHoras">0</span>
+    </div>
+    <button onclick="exportarExcel()">Exportar a Excel</button>
+    <button onclick="exportarPDF()">Exportar a PDF</button>
+    <button class="btn-borrar-todo" onclick="borrarTodo()">Borrar todo</button>
+  </div>
+
+  <script>
+    let actividades = [];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('formulario').reset(); // ← fuerza limpieza inicial
+      const guardadas = localStorage.getItem('actividades');
+      if (guardadas) {
+        actividades = JSON.parse(guardadas);
+        actualizarTabla();
+        if (actividades.length > 0) {
+          const ultima = actividades[actividades.length - 1];
+          actualizarResumen(ultima.ht, ultima.creditos);
+        }
+      }
+    });
+
+    document.getElementById('formulario').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const nombre = document.getElementById('nombre').value;
+      const hp = parseFloat(document.getElementById('hp').value);
+      const hn = parseFloat(document.getElementById('hn').value);
+      const ha = parseFloat(document.getElementById('ha').value);
+      const valorCre = parseInt(document.getElementById('valorCre').value);
+      const regimen = document.getElementById('regimen').value;
+      const anioPlan = document.getElementById('anioPlan').value;
+
+      const ht = hp + hn + ha;
+      const creditos = (ht / valorCre).toFixed(2);
+
+      actividades.push({ nombre, hp, hn, ha, ht, creditos, regimen, anioPlan });
+      localStorage.setItem('actividades', JSON.stringify(actividades));
+
+      actualizarTabla();
+      actualizarResumen(ht, creditos);
+      document.getElementById('formulario').reset();
+    });
+
+    function calcularCreditos() {
+      const hp = parseFloat(document.getElementById('hp').value);
+      const hn = parseFloat(document.getElementById('hn').value);
+      const ha = parseFloat(document.getElementById('ha').value);
+      const valorCre = parseInt(document.getElementById('valorCre').value);
+
+      if (isNaN(hp) || isNaN(hn) || isNaN(ha) || isNaN(valorCre)) {
+        alert("Por favor, complete todos los campos correctamente.");
+        return;
+      }
+
+      const ht = hp + hn + ha;
+      const creditos = (ht / valorCre).toFixed(2);
+      actualizarResumen(ht, creditos);
+    }
+
+    function actualizarResumen(ht, creditos) {
+      document.querySelector('#resultados p:nth-child(1)').innerHTML = `<strong>Total de horas:</strong> ${ht} horas`;
+      document.querySelector('#resultados p:nth-child(2)').innerHTML = `<strong>Créditos estimados:</strong> ${creditos} créditos`;
+    }
+
+    function actualizarTabla() {
+      const tbody = document.querySelector('#actividades tbody');
+      tbody.innerHTML = '';
+      let totalCreditos = 0;
+      let totalHoras = 0;
+      actividades.forEach((a, index) => {
+        const fila = `
+          <tr>
+            <td>${a.nombre}</td>
+            <td>${a.hp}</td>
+            <td>${a.hn}</td>
+            <td>${a.ha}</td>
+            <td>${a.ht}</td>
+            <td>${a.creditos}</td>
+            <td>${a.regimen}</td>
+            <td>${a.anioPlan}</td>
+            <td><button class="btn-eliminar" onclick="eliminarActividad(${index})">Eliminar</button></td>
+          </tr>`;
+        tbody.innerHTML += fila;
+        totalCreditos += parseFloat(a.creditos);
+        totalHoras += parseFloat(a.ht);
+      });
+      document.getElementById('totalCreditos').textContent = totalCreditos.toFixed(2);
+      document.getElementById('totalHoras').textContent = totalHoras.toFixed(2);
+    }
+
+    function eliminarActividad(index) {
+      if (confirm("¿Seguro que deseas eliminar esta actividad?")) {
+        actividades.splice(index, 1);
+        localStorage.setItem('actividades', JSON.stringify(actividades));
+        actualizarTabla();
+      }
+    }
+
+    function borrarTodo() {
+      if (confirm("¿Seguro que deseas borrar todas las actividades?")) {
+        actividades = [];
+        localStorage.removeItem('actividades');
+        actualizarTabla();
+        actualizarResumen(0, 0);
+      }
+    }
+
+    function exportarExcel() {
+      const wb = XLSX.utils.book_new();
+      const ws_data = [['Asignatura', 'HP', 'HN', 'HA', 'Total Horas', 'Créditos', 'Régimen', 'Año']];
+      actividades.forEach(a => {
+        ws_data.push([a.nombre, a.hp, a.hn, a.ha, a.ht, a.creditos, a.regimen, a.anioPlan]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, 'Actividades');
+      XLSX.writeFile(wb, 'actividades.xlsx');
+    }
+  </script>
+</body>
+</html>
